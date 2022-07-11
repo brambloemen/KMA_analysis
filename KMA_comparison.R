@@ -4,7 +4,7 @@
 #                                                                                #
 #                  Author: Bram Bloemen                                          #
 #                  Date:   26/02/2022                                            #
-#                  Date last update: 20/04/2022                                  #
+#                  Date last update: 11/07/2022                                  #
 #                                                                                #
 ##################################################################################
 
@@ -41,6 +41,7 @@ kmafiles <- str_subset(kmafiles, "(\\.mapstat|\\.res)")
 kmafiles <- unique(str_remove(kmafiles, "(\\.mapstat|\\.res)"))
 kmafiles <- kmafiles[kmafiles != "GMSspikeI_refseq_ResFdb"]
 kmafiles <- as.list(kmafiles)
+kmafiles <- lapply(1:length(kmafiles), function(k) paste0("./data/", kmafiles[[k]]))
 
 system.time(kma_all <- do.call("rbind_clean_kmaexp", kmafiles))
 
@@ -90,9 +91,10 @@ export_png("output/Low_ab_DTUdb.png", plot, width = 1200, height=800)
 
 
 # plots expected vs observed, pure vs fecal per workflow
-patterns <- c("(GMSspikeIdb|CB|RAD)", "(GMSspikeIdb|CB|LSK)", "(GMSspikeIdb|QuickDNA|LSK)")
-names <- c("scatter_DTUdb_QDLSK.png", "scatter_DTUdb_QDRAD.png", "scatter_DTUdb_CBRAD.png")
-titles <- c("Enzymatic (zymo QuickDNA) - Ligation sequencing", "Enzymatic (zymo QuickDNA) - Rapid sequencing", "Bead beating (Claremont Bio) - Rapid sequencing")
+patterns <- c("(GMSspikeIdb|CB|RAD)", "(GMSspikeIdb|CB|LSK)", "(GMSspikeIdb|QuickDNA|LSK|beads)", "(GMSspikeIdb|QuickDNA|LSK|CB_RAD)")
+names <- c("scatter_DTUdb_QDLSK.png", "scatter_DTUdb_QDRAD.png", "scatter_DTUdb_CBRAD.png", "scatter_DTUdb_CBbeads.png")
+titles <- c("Enzymatic (zymo QuickDNA) - Ligation sequencing", "Enzymatic (zymo QuickDNA) - Rapid sequencing", 
+            "Bead beating (Claremont Bio) - Rapid sequencing", "Bead beating (Claremont Bio + zymo beads) - Rapid sequencing")
 for(i in 1:length(patterns)){
   scatter <- kma_sum %>% 
     filter(KMA_experiment %in% kmafiles[str_detect(kmafiles, patterns[i], negate = TRUE)] | KMA_experiment == "zymo_GMS") %>%
@@ -135,14 +137,15 @@ for(matrix in c("Pure", "Fecal")){
       ylim(NA, 3) +
       geom_hline(yintercept=1, linetype="dashed")
     export_png(barplot_norm, bars_GMS_norm_pure, width=1600, height = 1200)
-    
+
     bar_readlengths <- df %>%
       bar_exp_v_obs(Organism, mean_readlength, Experiment, refcategory = "zymo_GMS")
     export_png(barplot_readlengths, bar_readlengths, width=1600, height = 1200)
-    
+
     bar_totalbp <- df %>%
       bar_exp_v_obs(Organism, bpTotal, Experiment, refcategory = "zymo_GMS")
     export_png(barplot_totalbp, bar_totalbp, width=1600, height = 1200)
+
   }
 }
 
