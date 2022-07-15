@@ -28,6 +28,13 @@ get_orgn <- function(dataframe){
   return(dataframe)
 }
 
+clean_org_name <- function(organism){
+  organism <- str_remove_all(organism, "Synthetic|\\[|\\]|\\scf.")
+  organism <- str_extract(organism, "[:upper:]{1}[:lower:]+\\s[:alpha:]+\\.?")
+  organism <- str_replace(organism, "Clostridium difficil+e", "Clostridioides difficile")
+  return(organism)
+}
+
 # for single experiment, format and combine the KMA .res and .mapstat files
 import_kmaexp <- function(kmafile){
   kma_mapstat <- fread(file=paste0(kmafile, ".mapstat"), sep="\t", skip=6,
@@ -41,33 +48,21 @@ import_kmaexp <- function(kmafile){
   return(kma)
 }
 
+
+
 # function to combine KMA datasets into one dataframe, and summarize data by species
+
+
 rbind_clean_kmaexp <- function(..., QueryID = 80){
   kmafiles <- list(...)
   
   kma_all <- data.frame()
+  
+  
   for (file in kmafiles){
     kma <- import_kmaexp(file)
     # warning: this summary removes all other variables
-    kma <- kma %>%
-      # Calculate totals: excludes most of the unmapped reads as KMA doesn't fully output these
-      mutate(Total_bp = sum(bpTotal, na.rm = TRUE),
-             Total_readCount = sum(readCount, na.rm = TRUE)) %>%
-      # QueryID cutoff: only templates that sufficiently matched the aligned reads are included
-      filter(Query_Identity > QueryID) %>%
-      group_by(Organism, KMA_experiment) %>%
-      summarize(p_bpTotal = sum(bpTotal, na.rm = TRUE)/unique(Total_bp),
-                mean_queryID = weighted.mean(Query_Identity, bpTotal, na.rm=TRUE),
-                mean_query_coverage = weighted.mean(Query_Coverage, bpTotal, na.rm=TRUE),
-                mean_templateID = weighted.mean(Template_Identity, Template_length, na.rm=TRUE),
-                template_length = sum(Template_length, na.rm=TRUE),
-                mean_template_coverage = weighted.mean(Template_Coverage, Template_length, na.rm=TRUE),
-                bpTotal = sum(bpTotal, na.rm = TRUE),
-                p_readCount = sum(readCount, na.rm = TRUE)/unique(Total_readCount),
-                readCount = sum(readCount, na.rm=TRUE),
-                mean_readlength = bpTotal/readCount,
-                refConsensusSum = sum(refConsensusSum),
-                .groups = "drop")
+    kma <- clean_summ_kmafile(kma, QueryID = 80)
     
     kma_all <- rbind(kma_all, kma)
   }
@@ -76,6 +71,29 @@ rbind_clean_kmaexp <- function(..., QueryID = 80){
 }
 
 
+clean_summ_kmafile <<- function(kma, QueryID = 80){
+  kma <- kma %>%
+    # Calculate totals: excludes most of the unmapped reads as KMA doesn't fully output these
+    mutate(Total_bp = sum(bpTotal, na.rm = TRUE),
+           Total_readCount = sum(readCount, na.rm = TRUE)) %>%
+    # QueryID cutoff: only templates that sufficiently matched the aligned reads are included
+    filter(Query_Identity > QueryID) %>%
+    group_by(Organism, KMA_experiment) %>%
+    summarize(p_bpTotal = sum(bpTotal, na.rm = TRUE)/unique(Total_bp),
+              mean_queryID = weighted.mean(Query_Identity, bpTotal, na.rm=TRUE),
+              mean_query_coverage = weighted.mean(Query_Coverage, bpTotal, na.rm=TRUE),
+              mean_templateID = weighted.mean(Template_Identity, Template_length, na.rm=TRUE),
+              total_template_length = sum(Template_length, na.rm=TRUE),
+              mean_template_length = mean(Template_length, na.rm=TRUE),
+              mean_template_coverage = weighted.mean(Template_Coverage, Template_length, na.rm=TRUE),
+              bpTotal = sum(bpTotal, na.rm = TRUE),
+              p_readCount = sum(readCount, na.rm = TRUE)/unique(Total_readCount),
+              readCount = sum(readCount, na.rm=TRUE),
+              mean_readlength = bpTotal/readCount,
+              refConsensusSum = sum(refConsensusSum),
+              .groups = "drop")
+  return(kma)
+}
 
 clean_GMS_refseq_temps <- function(template){
   template <- str_replace_all(template, "_", " ")
@@ -91,4 +109,25 @@ clean_GMS_refseq_temps <- function(template){
 clean_ARG_names <- function(amr_gene){
   amr_gene <- str_remove(amr_gene, "(_|-).+")
   return(amr_gene)
+}
+
+Combine_AMR_data <- function(AMRlinkfile, dbsuffix){
+  KMA_AMRdata <- fread(AMRlinkfile, fill=TRUE) %>%
+    mutate(AMR_gene = clean_ARG_names(AMR_gene),
+           Ref_species = clean_org_name(Ref_species)) %>%
+    group_by(AMR_gene, Ref_species) %>%
+    summarize_all(sum)
+  
+  exp_general_fp <- str_remove(AMRlinkfile, "_AMRlinks.csv")
+  
+  exp_name <- str_remove(AMRlinkfile, "_AMRlinks.csv")
+  exp_name <- str_remove(exp_name, "./data/")
+  KMA_AMRdata <- mutate(KMA_AMRdata, KMA_exp = exp_name)
+  
+  KMA_speciesdata <- import_kmaexp(paste0(exp_general_fp, "_", dbsuffix))
+  KMA_speciesdata <- clean_summ_kmafile(KMA_speciesdata)
+  
+  KMAdata <- merge(KMA_AMRdata, KMA_speciesdata, by.x = "Ref_species", by.y = "Organism",all = TRUE)
+  
+  return(KMAdata)
 }

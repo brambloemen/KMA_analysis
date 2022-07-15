@@ -41,12 +41,13 @@ Clean_KMA_mapto_GMS <- function(filename){
   write_tsv(df_res, paste0(filename,"_cleaned.res"))
 }
 
-files <- list.files() 
+files <- list.files("./data") 
 files <- files[str_detect(files,"GMSspikeIdb(\\.mapstat|\\.res)")]
 files <- files[str_detect(files,"cleaned(\\.mapstat|\\.res)", negate = TRUE)]
 files <- str_remove(files, "\\.mapstat|\\.res")
 files <- unique(files)
 files <- as.list(files)
+files <- lapply(1:length(files), function(k) paste0("./data/", files[k]))
 
 lapply(files, Clean_KMA_mapto_GMS)
 # Clean_KMA_mapto_GMS(files[[1]])
